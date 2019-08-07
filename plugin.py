@@ -85,7 +85,7 @@ class LJAircon:
             UpdateDevice(Unit=unit, nValue=device.nValue, sValue=device.sValue, TimedOut=1, updateAnyway=False)
 
 
-class BasePlugin:
+class MitsubishiAirConditioner:
     # 自上次读取一次新信息起经过了多久
     lastRefreshTimestamp = time.time()
 
@@ -619,7 +619,7 @@ class BasePlugin:
         return None
 
 global _plugin
-_plugin = BasePlugin()
+_plugin = MitsubishiAirConditioner()
 
 def UpdateDevice(Unit, nValue, sValue, TimedOut=0, updateAnyway=True):
     # Make sure that the Domoticz device still exists (they can be deleted) before updating it
