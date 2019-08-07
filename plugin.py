@@ -37,7 +37,7 @@ import Domoticz
 import sys
 version = '{}.{}'.format(sys.version_info.major, sys.version_info.minor)
 path = '/usr/local/lib/python{}/dist-packages'.format(version)
-path = '/usr/lib/python3{}'.format(version)
+
 sys.path.append(path)
 from pyModbusTCP.client import ModbusClient
 
