@@ -29,13 +29,15 @@
     </params>
 </plugin>
 """
-
+import sys
+sys.path.append('/usr/lib/python3/')
 import time
 import re
 import Domoticz
 import sys
 version = '{}.{}'.format(sys.version_info.major, sys.version_info.minor)
 path = '/usr/local/lib/python{}/dist-packages'.format(version)
+path = '/usr/lib/python3{}'.format(version)
 sys.path.append(path)
 from pyModbusTCP.client import ModbusClient
 
@@ -89,7 +91,7 @@ class BasePlugin:
 
     client = None
 
-    # 待发送的需要等待回复的命令，成员格式为:{"code":"XX", "cmd":"XXXXXXX", "type": "query", "timestamp": timestamp} 
+    # 待发送的需要等待回复的命令，成员格式为:{"code":"XX", "cmd":"XXXXXXX", "type": "query", "timestamp": timestamp}
     arrayCmdNeedWait = []
 
     # 正在等待回应的命令
@@ -137,7 +139,7 @@ class BasePlugin:
         # 0:自动，2:低，3:中2，5:中1，6:高
         self.mapVPFanSpeed = {'10':0, '20':2, '30':3, '40':5, '50':6}
         self.mapPVFanSpeed = self.revertDic(self.mapVPFanSpeed)
-        # 16~31°C (x10)，最小单位0.5°C 
+        # 16~31°C (x10)，最小单位0.5°C
         self.mapPVSetPoint = {}
         for i in range(160, 315, 5):
             self.mapPVSetPoint[i] = str((int((i - 160) / 5) + 1) * 10)
@@ -156,6 +158,7 @@ class BasePlugin:
         return
 
     def onStart(self):
+        Domoticz.Log('onStart()')
         Domoticz.Heartbeat(5)
         if Parameters["Mode2"] == "Debug":
             Domoticz.Debugging(1)
@@ -167,9 +170,9 @@ class BasePlugin:
 
         if self.client and self.client.is_open():
             self.client.close()
-        self.client = ModbusClient(host=Parameters["Address"], port=Parameters["Port"], unit_id = int(0xDC), auto_open=True, timeout=1)
+        self.client = ModbusClient(host=Parameters["Address"], port=Parameters["Port"], auto_open=True, timeout=1)
         self.queryStatus()
-        
+
 
     def onStop(self):
         Domoticz.Log("onStop called")
@@ -182,7 +185,7 @@ class BasePlugin:
 
     def clientConnected(self):
         if not self.client: return False
-            
+
         if self.client.is_open():
             return True
         elif not self.client.open():
@@ -195,17 +198,21 @@ class BasePlugin:
             for aircon in self.dicAircon.values():
                 aircon.offline()
             return
-        
+
         for aircon in self.dicAircon.values():
             #if not aircon.online:
                 #continue
             # 设备已连接才发送查询指令
-            
+
             dicOptions = aircon.devicePowerOn.Options
-            if not dicOptions or 'LJCode' not in dicOptions or 'LJShift' not in dicOptions: 
+            if not dicOptions or 'LJCode' not in dicOptions or 'LJShift' not in dicOptions:
                 return
 
-            registerText = dicOptions['LJCode'] + dicOptions['LJShift']
+            registerText = dicOptions['LJShift']
+            Domoticz.Log(
+            "QueryStatus " + registerText)
+            self.client.unit_id(int(dicOptions['LJCode'], 16))
+
             regs = self.client.read_holding_registers(int(registerText, 16), 7)
             if not regs or len(regs) != 7:
                 Domoticz.Log('Warning: Reading Regs Fail! 0x' + dicOptions['LJCode'])
@@ -224,13 +231,13 @@ class BasePlugin:
                 sValue = self.mapPVMode[regs[1]]
                 device = aircon.deviceMode
                 UpdateDevice(Unit=int(device.Options['LJUnit']), nValue=nValue, sValue=sValue, TimedOut=0)
-            
+
             if aircon.deviceFanSpeed and regs[2] in self.mapPVFanSpeed:
                 nValue = 1
                 sValue = self.mapPVFanSpeed[regs[2]]
                 device = aircon.deviceFanSpeed
                 UpdateDevice(Unit=int(device.Options['LJUnit']), nValue=nValue, sValue=sValue, TimedOut=0)
-            
+
             if aircon.deviceSetPoint and regs[3] in self.mapPVSetPoint:
                 nValue = 1
                 sValue = self.mapPVSetPoint[regs[3]]
@@ -242,7 +249,7 @@ class BasePlugin:
                 sValue = self.mapPVRoomPoint[regs[4]]
                 device = aircon.deviceRoomPoint
                 UpdateDevice(Unit=int(device.Options['LJUnit']), nValue=nValue, sValue=sValue, TimedOut=0)
-            
+
             if aircon.deviceFanDirect and regs[5] in self.mapPVFanDirect:
                 nValue = 1
                 sValue = self.mapPVFanDirect[regs[5]]
@@ -258,7 +265,7 @@ class BasePlugin:
                     sValue = '错误!故障代码: '+ hexText
                 device = aircon.deviceFaultCode
                 UpdateDevice(Unit=int(device.Options['LJUnit']), nValue=nValue, sValue=sValue, TimedOut=0)
-                    
+
     def onCommand(self, Unit, Command, Level, Hue):
         if not self.clientConnected():
             Domoticz.Log('Modbus connect failed!')
@@ -281,7 +288,7 @@ class BasePlugin:
         if not code or code not in self.dicAircon or not shift or int(shift) < 0 or int(shift) > 6:
             return
         aircon = self.dicAircon[code]
-        #if not aircon.online: 
+        #if not aircon.online:
             #return
 
         if shift == '00':
@@ -334,7 +341,8 @@ class BasePlugin:
         Domoticz.Log('sendCmdBySValue\(mapVP={}, device={}, sValue={}'.format(mapVP,device,sValue)) # TODO
         if not device or not mapVP or sValue not in mapVP:
             return None
-        registerText = device.Options['LJCode'] + device.Options['LJShift']
+        registerText = device.Options['LJShift']
+        self.client.unit_id(int(device.Options['LJCode'], 16))
         if (self.client.write_single_register(int(registerText, 16), mapVP[str(sValue)])):
             Domoticz.Log('write_single_register\(0x{}, {}\) success!'.format(registerText, mapVP[sValue])) # TODO
             timedOut = 0
@@ -345,17 +353,18 @@ class BasePlugin:
             result = False
             aircon.offline()
             sValue = device.sValue
-        
+
         UpdateDevice(Unit=int(device.Options['LJUnit']), nValue=device.nValue, sValue=str(sValue), TimedOut=timedOut)
         return result
-    
+
     # 从nValue取值，找Payload，并写寄存器
     def sendCmdByNValue(self, aircon, mapVP, device, nValue):
         if not self.clientConnected(): return
         Domoticz.Log('sendCmdByNValue\(mapVP={}, device={}, nValue={}'.format(mapVP,device,nValue)) # TODO
         if not device or not mapVP or nValue not in mapVP:
             return None
-        registerText = device.Options['LJCode'] + device.Options['LJShift']
+        registerText = device.Options['LJShift']
+        self.client.unit_id(int(device.Options['LJCode'], 16))
         if (self.client.write_single_register(int(registerText, 16), mapVP[nValue])):
             Domoticz.Log('write_single_register\(0x{}, {}\) success!'.format(registerText, mapVP[nValue])) # TODO
             timedOut = 0
@@ -378,7 +387,7 @@ class BasePlugin:
 
     def onHeartbeat(self):
         Domoticz.Log('onHeartbeat Called ---------------------------------------')
-        # 如果没连接则尝试重新连接 
+        # 如果没连接则尝试重新连接
         if not self.clientConnected():
             for aircon in self.dicAircon.values():
                 aircon.offline()
@@ -408,14 +417,14 @@ class BasePlugin:
             tmp2 = '{:0>2}'.format(tmp2)
             Domoticz.Log('Detected Code:' + tmp2)
             self.dicAircon[tmp2] = LJAircon(tmp2)
-        
+
 
         # 记录已有的unit
         setUnit = set([])
         # 待删除的device对应的unit
         setUnitDel = set([])
         # 所有的Unit集合
-        setUnitAll = set(range(1, 256)) 
+        setUnitAll = set(range(1, 256))
         # 将Device放入对应的控制器对象中，多余的device删除
         for unit in Devices:
             device = Devices[unit]
@@ -507,7 +516,7 @@ class BasePlugin:
         # Check if images are in database
         #if "LJCountDown" not in Images:
         #    Domoticz.Image("LJCountDown.zip").Create()
-        #image = Images["LJCountDown"].ID 
+        #image = Images["LJCountDown"].ID
 
         # 遍历控制器，补全控制器对应的device
         for aircon in self.dicAircon.values():
@@ -561,7 +570,7 @@ class BasePlugin:
                         levelNames += '|' + str(i // 10) + '℃'
                     elif i%5 == 0:
                         levelNames += '|' + str(float(i) / 10) + '℃'
-                
+
                 optionsGradient = {'LevelActions': '|' * levelNames.count('|'),
                                 'LevelNames': levelNames,
                                 'LevelOffHidden': 'true',
@@ -613,7 +622,7 @@ global _plugin
 _plugin = BasePlugin()
 
 def UpdateDevice(Unit, nValue, sValue, TimedOut=0, updateAnyway=True):
-    # Make sure that the Domoticz device still exists (they can be deleted) before updating it  
+    # Make sure that the Domoticz device still exists (they can be deleted) before updating it
     if (Unit in Devices):
         if updateAnyway or (Devices[Unit].nValue != nValue) or (Devices[Unit].sValue != sValue) or (Devices[Unit].TimedOut != TimedOut):
             Devices[Unit].Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
