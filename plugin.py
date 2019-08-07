@@ -618,8 +618,8 @@ class MitsubishiAirConditioner:
             return {v : k for k, v in dic.items()}
         return None
 
-global _plugin
-_plugin = MitsubishiAirConditioner()
+global _pluginMitsubishiAirConditioner
+_pluginMitsubishiAirConditioner = MitsubishiAirConditioner()
 
 def UpdateDevice(Unit, nValue, sValue, TimedOut=0, updateAnyway=True):
     # Make sure that the Domoticz device still exists (they can be deleted) before updating it
@@ -642,36 +642,36 @@ def descDevice(device, unit=None, nValue = None, sValue = None):
     return 'Unit: {}, Name: {}, nValue: {}, sValue: {}, TimedOut: {} Aircon: 0x{:0>2}, Shift: {}'.format(unit, device.Name, n, s, device.TimedOut, code, shift)
 
 def onStart():
-    global _plugin
-    _plugin.onStart()
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onStart()
 
 def onStop():
-    global _plugin
-    _plugin.onStop()
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onStop()
 
 def onConnect(Connection, Status, Description):
-    global _plugin
-    _plugin.onConnect(Connection, Status, Description)
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onConnect(Connection, Status, Description)
 
 def onMessage(Connection, Data):
-    global _plugin
-    _plugin.onMessage(Connection, Data)
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onMessage(Connection, Data)
 
 def onCommand(Unit, Command, Level, Hue):
-    global _plugin
-    _plugin.onCommand(Unit, Command, Level, Hue)
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onCommand(Unit, Command, Level, Hue)
 
 def onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile):
-    global _plugin
-    _plugin.onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile)
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile)
 
 def onDisconnect(Connection):
-    global _plugin
-    _plugin.onDisconnect(Connection)
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onDisconnect(Connection)
 
 def onHeartbeat():
-    global _plugin
-    _plugin.onHeartbeat()
+    global _pluginMitsubishiAirConditioner
+    _pluginMitsubishiAirConditioner.onHeartbeat()
 
 # Generic helper functions
 def DumpConfigToLog():
