@@ -31,14 +31,16 @@
 """
 import sys
 sys.path.append('/usr/lib/python3/')
+
+version = '{}.{}'.format(sys.version_info.major, sys.version_info.minor)
+path = '/usr/local/lib/python{}/dist-packages'.format(version)
+sys.path.append(path)
+
+
 import time
 import re
 import Domoticz
-import sys
-version = '{}.{}'.format(sys.version_info.major, sys.version_info.minor)
-path = '/usr/local/lib/python{}/dist-packages'.format(version)
 
-sys.path.append(path)
 from pyModbusTCP.client import ModbusClient
 
 
@@ -76,11 +78,20 @@ class LJAircon:
         self.dicDevice = {}
 
     # 更新设备状态为未在线
-    def offline(self):
+    def goOffline(self):
+
         if self.online:
             self.online = False
-            Domoticz.Log('Aircon 0x{} offline now!'.format(self.address))
+            Domoticz.Log('Aircon 0x{} offline now!'.format(self.code))
+        for unit, device in self.dicDevice.items():
+            UpdateDevice(Unit=unit, nValue=device.nValue, sValue=device.sValue, TimedOut=1, updateAnyway=False)
 
+
+    def goOnline(self):
+
+        if not self.online:
+            self.online = True
+            Domoticz.Log('Aircon 0x{} online now!'.format(self.code))
         for unit, device in self.dicDevice.items():
             UpdateDevice(Unit=unit, nValue=device.nValue, sValue=device.sValue, TimedOut=1, updateAnyway=False)
 
@@ -141,8 +152,8 @@ class MitsubishiAirConditioner:
         self.mapPVFanSpeed = self.revertDic(self.mapVPFanSpeed)
         # 16~31°C (x10)，最小单位0.5°C
         self.mapPVSetPoint = {}
-        for i in range(160, 315, 5):
-            self.mapPVSetPoint[i] = str((int((i - 160) / 5) + 1) * 10)
+        for i in range(190, 300, 5):
+            self.mapPVSetPoint[i] = str((int((i - 190) / 5) + 1) * 10)
         self.mapVPSetPoint = self.revertDic(self.mapPVSetPoint)
         # 10~38°C (x10)，最小单位1°C
         self.mapPVRoomPoint = {}
@@ -158,7 +169,6 @@ class MitsubishiAirConditioner:
         return
 
     def onStart(self):
-        Domoticz.Log('onStart()')
         Domoticz.Heartbeat(5)
         if Parameters["Mode2"] == "Debug":
             Domoticz.Debugging(1)
@@ -168,20 +178,26 @@ class MitsubishiAirConditioner:
         # 从Domoticz重新加载硬件和设备信息
         self.reloadFromDomoticz()
 
+        debug = False
+        if Parameters["Mode2"] == "Debug":
+            debug = True
         if self.client and self.client.is_open():
             self.client.close()
-        self.client = ModbusClient(host=Parameters["Address"], port=Parameters["Port"], auto_open=True, timeout=1)
+        self.client = ModbusClient(host=Parameters["Address"], port=Parameters["Port"], auto_open=True, auto_close=False, timeout=1)
+        self.client.mode(2)
+        self.client.debug(True)# TODO
+
         self.queryStatus()
 
 
     def onStop(self):
-        Domoticz.Log("onStop called")
+        return
 
     def onConnect(self, Connection, Status, Description):
-        Domoticz.Log("onConnect called")
+        return
 
     def onMessage(self, Connection, Data):
-        Domoticz.Log("onMessage called")
+        return
 
     def clientConnected(self):
         if not self.client: return False
@@ -196,7 +212,7 @@ class MitsubishiAirConditioner:
 
         if not self.clientConnected():
             for aircon in self.dicAircon.values():
-                aircon.offline()
+                aircon.goOffline()
             return
 
         for aircon in self.dicAircon.values():
@@ -207,18 +223,14 @@ class MitsubishiAirConditioner:
             dicOptions = aircon.devicePowerOn.Options
             if not dicOptions or 'LJCode' not in dicOptions or 'LJShift' not in dicOptions:
                 return
-
-            registerText = dicOptions['LJShift']
-            Domoticz.Log(
-            "QueryStatus " + registerText)
             self.client.unit_id(int(dicOptions['LJCode'], 16))
-
-            regs = self.client.read_holding_registers(int(registerText, 16), 7)
+            regs = self.client.read_holding_registers(int(dicOptions['LJShift'], 16), 7)
             if not regs or len(regs) != 7:
                 Domoticz.Log('Warning: Reading Regs Fail! 0x' + dicOptions['LJCode'])
-                aircon.online = False
-                aircon.offline()
+                aircon.goOffline()
                 continue
+
+            aircon.goOnline()
             # Domoticz.Log('Receive Regs:' + str(regs))
             if aircon.devicePowerOn and regs[0] in self.mapPVPowerOn:
                 nValue = self.mapPVPowerOn[regs[0]]
@@ -270,7 +282,7 @@ class MitsubishiAirConditioner:
         if not self.clientConnected():
             Domoticz.Log('Modbus connect failed!')
             for aircon in self.dicAircon.values():
-                aircon.offline()
+                aircon.goOffline()
             return
         Domoticz.Log(
             "onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
@@ -351,7 +363,7 @@ class MitsubishiAirConditioner:
             Domoticz.Log('write_single_register\(0x{}, {}\) failed!'.format(registerText, mapVP[sValue])) # TODO
             timedOut = 1
             result = False
-            aircon.offline()
+            aircon.goOffline()
             sValue = device.sValue
 
         UpdateDevice(Unit=int(device.Options['LJUnit']), nValue=device.nValue, sValue=str(sValue), TimedOut=timedOut)
@@ -373,7 +385,7 @@ class MitsubishiAirConditioner:
             Domoticz.Log('write_single_register\(0x{}, {}\) failed!'.format(registerText, mapVP[nValue])) # TODO
             timedOut = 1
             result = False
-            aircon.offline()
+            aircon.goOffline()
             nValue = device.nValue
         UpdateDevice(Unit=int(device.Options['LJUnit']), nValue=nValue, sValue=str(device.sValue), TimedOut=timedOut)
         return result
@@ -386,11 +398,11 @@ class MitsubishiAirConditioner:
         Domoticz.Log("onDisconnect called")
 
     def onHeartbeat(self):
-        Domoticz.Log('onHeartbeat Called ---------------------------------------')
+        # Domoticz.Log('onHeartbeat Called ---------------------------------------')
         # 如果没连接则尝试重新连接
         if not self.clientConnected():
             for aircon in self.dicAircon.values():
-                aircon.offline()
+                aircon.goOffline()
             return
 
         # 查询空调状态
@@ -565,7 +577,7 @@ class MitsubishiAirConditioner:
                 setUnit.add(newUnit)
                 optionsCustom = {"LJUnit": str(newUnit), 'LJCode' : aircon.code, 'LJShift' : '03'}
                 levelNames = 'Off'
-                for i in range(160, 315, 5):
+                for i in range(190, 300, 5):
                     if i%10 == 0:
                         levelNames += '|' + str(i // 10) + '℃'
                     elif i%5 == 0:
