@@ -29,7 +29,9 @@
     </params>
 </plugin>
 """
-import sys
+import sys,os
+import threading
+import queue
 sys.path.append('/usr/lib/python3/')
 
 version = '{}.{}'.format(sys.version_info.major, sys.version_info.minor)
@@ -140,6 +142,8 @@ class MitsubishiAirConditioner:
     mapPVFanDirect = None
 
     def __init__(self):
+        self.messageQueue = queue.Queue()
+        self.messageThread = threading.Thread(name="QueueThread", target=MitsubishiAirConditioner.handleMessage, args=(self,))
         self.recv = ''
         # 0:关1:开
         self.mapVPPowerOn = {0:0, 1:1}
@@ -170,6 +174,7 @@ class MitsubishiAirConditioner:
 
     def onStart(self):
         Domoticz.Heartbeat(5)
+
         if Parameters["Mode2"] == "Debug":
             Domoticz.Debugging(1)
         else:
@@ -184,13 +189,26 @@ class MitsubishiAirConditioner:
         if self.client and self.client.is_open():
             self.client.close()
         self.client = ModbusClient(host=Parameters["Address"], port=Parameters["Port"], auto_open=True, auto_close=False, timeout=1)
+        self.messageThread.start()
         self.client.mode(2)
         self.client.debug(True)# TODO
 
-        self.queryStatus()
+        self.messageQueue.put({"Type":"Log", "Text":"Heartbeat test message"})
 
 
     def onStop(self):
+        # signal queue thread to exit
+        self.messageQueue.put(None)
+        Domoticz.Log("Clearing message queue...")
+        self.messageQueue.join()
+
+        # Wait until queue thread has exited
+        Domoticz.Log("Threads still active: "+str(threading.active_count())+", should be 1.")
+        while (threading.active_count() > 1):
+            for thread in threading.enumerate():
+                if (thread.name != threading.current_thread().name):
+                    Domoticz.Log("'"+thread.name+"' is still running, waiting otherwise Domoticz will abort on plugin exit.")
+            time.sleep(1.0)
         return
 
     def onConnect(self, Connection, Status, Description):
@@ -208,8 +226,29 @@ class MitsubishiAirConditioner:
             Domoticz.Log('Warning: Modbus connect failed')
             return False
 
-    def queryStatus(self):
+    def handleMessage(self):
+        try:
+            Domoticz.Debug("Entering message handler")
+            while True:
+                Message = self.messageQueue.get(block=True)
+                if Message is None:
+                    Domoticz.Debug("Exiting message handler")
+                    self.messageQueue.task_done()
+                    break
 
+                if (Message["Type"] == "Log"):
+                    Domoticz.Log("handleMessage: '"+Message["Text"]+"'.")
+                elif (Message["Status"] == "Error"):
+                    Domoticz.Status("handleMessage: '"+Message["Text"]+"'.")
+                elif (Message["Type"] == "Error"):
+                    Domoticz.Error("handleMessage: '"+Message["Text"]+"'.")
+
+                self.queryStatus()
+                self.messageQueue.task_done()
+        except Exception as err:
+            Domoticz.Error("handleMessage: "+str(err))
+
+    def queryStatus(self):
         if not self.clientConnected():
             for aircon in self.dicAircon.values():
                 aircon.goOffline()
@@ -224,6 +263,7 @@ class MitsubishiAirConditioner:
             if not dicOptions or 'LJCode' not in dicOptions or 'LJShift' not in dicOptions:
                 return
             self.client.unit_id(int(dicOptions['LJCode'], 16))
+            time.sleep(0.1)
             regs = self.client.read_holding_registers(int(dicOptions['LJShift'], 16), 7)
             if not regs or len(regs) != 7:
                 Domoticz.Log('Warning: Reading Regs Fail! 0x' + dicOptions['LJCode'])
@@ -406,7 +446,8 @@ class MitsubishiAirConditioner:
             return
 
         # 查询空调状态
-        self.queryStatus()
+        self.messageQueue.put({"Type":"Log", "Text":"Heartbeat test message"})
+
 
     def reloadFromDomoticz(self):
         self.dicAircon = {}
