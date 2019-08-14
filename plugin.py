@@ -103,6 +103,8 @@ class MitsubishiAirConditioner:
     lastRefreshTimestamp = time.time()
 
     client = None
+    messageQueue = None
+    messageThread = None
 
     # 待发送的需要等待回复的命令，成员格式为:{"code":"XX", "cmd":"XXXXXXX", "type": "query", "timestamp": timestamp}
     arrayCmdNeedWait = []
@@ -112,9 +114,6 @@ class MitsubishiAirConditioner:
 
     # 存储各个空调控制器的dic, key:字符串表示的控制器模块编码(HEX) value:LJAircon对象
     dicAircon = {}
-
-    # 收到但仍未处理的数据字符串
-    recv = ''
 
     # nValue/sValue至寄存器Payload的map - 开关
     mapVPPowerOn = None
@@ -144,7 +143,7 @@ class MitsubishiAirConditioner:
     def __init__(self):
         self.messageQueue = queue.Queue()
         self.messageThread = threading.Thread(name="QueueThread", target=MitsubishiAirConditioner.handleMessage, args=(self,))
-        self.recv = ''
+
         # 0:关1:开
         self.mapVPPowerOn = {0:0, 1:1}
         self.mapPVPowerOn = self.revertDic(self.mapVPPowerOn)
@@ -191,7 +190,7 @@ class MitsubishiAirConditioner:
         self.client = ModbusClient(host=Parameters["Address"], port=Parameters["Port"], auto_open=True, auto_close=False, timeout=1)
         self.messageThread.start()
         self.client.mode(2)
-        self.client.debug(True)# TODO
+
 
         self.messageQueue.put({"Type":"Log", "Text":"Heartbeat test message"})
 
