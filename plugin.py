@@ -235,13 +235,6 @@ class MitsubishiAirConditioner:
                     self.messageQueue.task_done()
                     break
 
-                if (Message["Type"] == "Log"):
-                    Domoticz.Log("handleMessage: '"+Message["Text"]+"'.")
-                elif (Message["Status"] == "Error"):
-                    Domoticz.Status("handleMessage: '"+Message["Text"]+"'.")
-                elif (Message["Type"] == "Error"):
-                    Domoticz.Error("handleMessage: '"+Message["Text"]+"'.")
-
                 self.queryStatus()
                 self.messageQueue.task_done()
         except Exception as err:
@@ -270,7 +263,7 @@ class MitsubishiAirConditioner:
                 continue
 
             aircon.goOnline()
-            # Domoticz.Log('Receive Regs:' + str(regs))
+            Domoticz.Debug('Receive Regs:' + str(regs))
             if aircon.devicePowerOn and regs[0] in self.mapPVPowerOn:
                 nValue = self.mapPVPowerOn[regs[0]]
                 sValue = aircon.devicePowerOn.sValue
@@ -674,11 +667,11 @@ global _pluginMitsubishiAirConditioner
 _pluginMitsubishiAirConditioner = MitsubishiAirConditioner()
 
 def UpdateDevice(Unit, nValue, sValue, TimedOut=0, updateAnyway=True):
-    # Make sure that the Domoticz device still exists (they can be deleted) before updating it 
+    # Make sure that the Domoticz device still exists (they can be deleted) before updating it
     if (Unit in Devices):
         if updateAnyway or (Devices[Unit].nValue != nValue) or (Devices[Unit].sValue != sValue) or (Devices[Unit].TimedOut != TimedOut):
             Devices[Unit].Update(nValue=nValue, sValue=str(sValue), TimedOut=TimedOut)
-            # Domoticz.Log("UPDATE DEVICE "+ descDevice(Devices[Unit], unit=Unit, nValue=nValue, sValue=sValue))
+            Domoticz.Debug("UPDATE DEVICE "+ descDevice(Devices[Unit], unit=Unit, nValue=nValue, sValue=sValue))
     return
 
 def logConnectStatus(conn):
