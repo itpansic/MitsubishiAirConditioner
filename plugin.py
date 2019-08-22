@@ -86,7 +86,7 @@ class LJAircon:
             self.online = False
             Domoticz.Log('Aircon 0x{} offline now!'.format(self.code))
         for unit, device in self.dicDevice.items():
-            UpdateDevice(Unit=unit, nValue=device.nValue, sValue=device.sValue, TimedOut=1, updateAnyway=False)
+            UpdateDevice(Unit=unit, nValue=device.nValue, sValue=device.sValue, TimedOut = 1, updateAnyway=False)
 
 
     def goOnline(self):
@@ -95,7 +95,7 @@ class LJAircon:
             self.online = True
             Domoticz.Log('Aircon 0x{} online now!'.format(self.code))
         for unit, device in self.dicDevice.items():
-            UpdateDevice(Unit=unit, nValue=device.nValue, sValue=device.sValue, TimedOut=1, updateAnyway=False)
+            UpdateDevice(Unit=unit, nValue=device.nValue, sValue=device.sValue, TimedOut = 0, updateAnyway=False)
 
 
 class MitsubishiAirConditioner:
@@ -162,9 +162,9 @@ class MitsubishiAirConditioner:
         self.mapPVRoomPoint = {}
         for i in range(100, 385, 5):
             if i%10 == 0:
-                self.mapPVRoomPoint[i] = str(i // 10) + '°C'
+                self.mapPVRoomPoint[i] = str(i // 10)
             elif i%5 == 0:
-                self.mapPVRoomPoint[i] = str(float(i) / 10) + '°C'
+                self.mapPVRoomPoint[i] = str(float(i) / 10)
         self.mapVPRoomPoint = self.revertDic(self.mapPVRoomPoint)
         # 0:自动，1~5:位置1~5 7:摆风
         self.mapVPFanDirect = {'10':0, '20':1, '30':2, '40':3, '50':4, '60':5, '70':7}
@@ -207,7 +207,7 @@ class MitsubishiAirConditioner:
             for thread in threading.enumerate():
                 if (thread.name != threading.current_thread().name):
                     Domoticz.Log("'"+thread.name+"' is still running, waiting otherwise Domoticz will abort on plugin exit.")
-            time.sleep(1.0)
+            time.sleep(0.1)
         return
 
     def onConnect(self, Connection, Status, Description):
@@ -255,10 +255,15 @@ class MitsubishiAirConditioner:
             if not dicOptions or 'LJCode' not in dicOptions or 'LJShift' not in dicOptions:
                 return
             self.client.unit_id(int(dicOptions['LJCode'], 16))
-            time.sleep(0.1)
-            regs = self.client.read_holding_registers(int(dicOptions['LJShift'], 16), 7)
-            if not regs or len(regs) != 7:
+            time.sleep(0.2)
+
+            regs = self.client.read_holding_registers(0, 7)
+            if not regs or regs is None:
                 Domoticz.Log('Warning: Reading Regs Fail! 0x' + dicOptions['LJCode'])
+                aircon.goOffline()
+                continue
+            elif len(regs) != 7:
+                Domoticz.Log('Warning: Reading Regs Fail! 0x{}, recevied:{}'.format(dicOptions['LJCode'], str(regs)))
                 aircon.goOffline()
                 continue
 
@@ -630,7 +635,7 @@ class MitsubishiAirConditioner:
                 setUnit.add(newUnit)
                 optionsCustom = {"LJUnit": str(newUnit), 'LJCode' : aircon.code, 'LJShift' : '04'}
                 name = '0x{} 室温'.format(aircon.code)
-                aircon.deviceRoomPoint = Domoticz.Device(Name=name, Unit=newUnit, TypeName="Text", Image=17,  Options=optionsCustom)
+                aircon.deviceRoomPoint = Domoticz.Device(Name=name, Unit=newUnit, TypeName="Temperature",  Options=optionsCustom)
                 aircon.deviceRoomPoint.Create()
                 aircon.dicDevice[newUnit] = aircon.deviceRoomPoint
                 Domoticz.Log('ADD DEVICE :'+ descDevice(device=aircon.deviceRoomPoint, unit=newUnit))
@@ -665,6 +670,7 @@ class MitsubishiAirConditioner:
 
 global _pluginMitsubishiAirConditioner
 _pluginMitsubishiAirConditioner = MitsubishiAirConditioner()
+
 
 def UpdateDevice(Unit, nValue, sValue, TimedOut=0, updateAnyway=True):
     # Make sure that the Domoticz device still exists (they can be deleted) before updating it
